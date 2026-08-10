@@ -1,8 +1,8 @@
 <div align="center">
   
-  # 🚀 ClaudeRelay
+  # ❋ Claude-Relay
   
-  <img src="Assets/Asset.png" alt="ClaudeRelay Logo" width="250" />
+  <img src="Assets/Asset_v2.png" alt="ClaudeRelay Logo" width="800" />
   
   **The Ultimate Anthropic → OpenAI Proxy Wrapper**
   
@@ -13,7 +13,7 @@
 
   <p align="center">
     Use <b>Claude Code</b> or any Anthropic SDK with <b>ANY OpenAI-compatible URL</b>.<br>
-    NVIDIA NIM, Groq, OpenRouter, Together AI, Ollama, LM Studio — they all work seamlessly.
+    NVIDIA NIM, Groq, OpenRouter, Together AI, Ollama, LM Studio - they all work seamlessly.
   </p>
 </div>
 
@@ -36,7 +36,7 @@
 
 ## ✨ Why ClaudeRelay?
 
-Claude Code and the Anthropic SDK natively only talk to Anthropic's servers. **ClaudeRelay** acts as an invisible middleman that translates Anthropic's API format into the standard OpenAI format on the fly — and translates the response back. No code changes. No hacks. Just works.
+Claude Code and the Anthropic SDK natively only talk to Anthropic's servers. **ClaudeRelay** acts as an invisible middleman that translates Anthropic's API format into the standard OpenAI format on the fly and translates the response back. No code changes. No hacks. Just works.
 
 ```mermaid
 graph LR
@@ -46,13 +46,13 @@ graph LR
 ```
 
 ### 🌟 Key Features
-- ⚡ **Zero Dependencies** — Pure Node.js built-ins. Just download and run!
-- 🔄 **Universal Wrapper** — Point it to **any** OpenAI-compatible URL and it just works.
-- 📡 **Full Streaming (SSE) Support** — Watch responses stream in real-time.
-- 🛠️ **Tool / Function Calling** — Fully supports Claude's tool use mapped to OpenAI tools.
-- 🛡️ **Auto Rate-Limit Queue** — Built-in protection against `429 Too Many Requests`.
-- 🔌 **Graceful Disconnects** — Never crashes when the client disconnects mid-stream.
-- 💻 **Cross-Platform** — Native runner scripts for Windows, macOS, and Linux.
+- ⚡ **Zero Dependencies** : Pure Node.js built-ins. Just download and run!
+- 🔄 **Universal Wrapper** : Point it to **any** OpenAI-compatible URL and it just works.
+- 📡 **Full Streaming (SSE) Support** : Watch responses stream in real-time.
+- 🛠️ **Tool / Function Calling** : Fully supports Claude's tool use mapped to OpenAI tools.
+- 🛡️ **Auto Rate-Limit Queue** : Built-in protection against `429 Too Many Requests`.
+- 🔌 **Graceful Disconnects** : Never crashes when the client disconnects mid-stream.
+- 💻 **Cross-Platform** : Native runner scripts for Windows, macOS, and Linux.
 
 ---
 
@@ -140,42 +140,7 @@ You can easily switch providers just by editing `.env`. No code changes required
 | `PROXY_RATE_LIMIT_RPM` | `38` | Max upstream requests per minute |
 | `PROXY_TIMEOUT_SECONDS` | `300` | Upstream request timeout |
 
----
-
-## 🌍 Supported Providers
-
-Change `LLM_BASE_URL`, `LLM_API_KEY`, and `MODEL` in `.env`, then restart the proxy.
-
-| Provider | `LLM_BASE_URL` | Example `MODEL` |
-|----------|---------------|-----------------|
-| **NVIDIA NIM** (default) | `https://integrate.api.nvidia.com/v1` | `nvidia/nemotron-3-super-120b-a12b` |
-| **Groq** | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` |
-| **OpenRouter** | `https://openrouter.ai/api/v1` | `google/gemini-flash-1.5` |
-| **Together AI** | `https://api.together.xyz/v1` | `meta-llama/Llama-3-70b-chat-hf` |
-| **Ollama** (Local) | `http://localhost:11434/v1` | `llama3` |
-| **LM Studio** | `http://localhost:1234/v1` | `llama3` |
-
 > 💡 **Tip:** For local providers like Ollama or LM Studio, set `LLM_API_KEY=local` — any non-empty string works.
-
----
-
-## 🧪 Testing
-
-ClaudeRelay comes with a built-in diagnostic test suite (71 tests across 2 suites) to ensure everything works flawlessly with your chosen provider.
-
-**macOS / Linux:**
-```bash
-./tests/run-tests.sh
-```
-
-**Windows:**
-```bat
-tests\run-tests.bat
-```
-
-> **Note:** The test scripts automatically start and stop the proxy for you!
-
-The suite covers: health check, non-streaming, streaming SSE, tool calling, rate-limit queuing, malformed inputs, client disconnects, concurrency, and full Anthropic response shape compliance.
 
 ---
 
@@ -197,17 +162,6 @@ The suite covers: health check, non-streaming, streaming SSE, tool calling, rate
 5. Claude Code receives it as if it came from Anthropic's servers
 ```
 
-### Streaming Translation
-
-Streaming is the trickiest part. OpenAI's stream is "dumb" — it fires raw text chunks as fast as possible. But Anthropic's stream expects a highly choreographed sequence of events.
-
-ClaudeRelay acts as a **state machine** to solve this:
-1. Before forwarding the first word, it **manually fires** a `message_start` and `content_block_start` event.
-2. As OpenAI streams words, it wraps each word in a `content_block_delta` event.
-3. When OpenAI closes the connection, the proxy fires `content_block_stop` and `message_stop` so Claude Code gracefully finishes instead of crashing.
-
-Both sides are completely fooled into thinking they are talking to their native ecosystem.
-
 ### Feature Checklist
 - ✅ Streaming (SSE) and non-streaming responses
 - ✅ Tool / function calling
@@ -219,11 +173,7 @@ Both sides are completely fooled into thinking they are talking to their native 
 - ✅ Zero npm dependencies — pure Node.js built-ins only
 - ✅ Works on Windows, Linux, and macOS
 
----
-
-## 🔍 Adding Web Search (Recommended)
-
-When using ClaudeRelay, Anthropic's built-in web search is **not available** because it runs on Anthropic's own servers. To give Claude Code web search capability, we highly recommend adding the DuckDuckGo MCP server (`duckduckgo-mcp-server`) or a similar search MCP to your Claude Code configuration. This allows searches to run locally and seamlessly through the proxy without needing API keys.
+🚨 **Note:** When using ClaudeRelay, Anthropic's built-in web search is **not available** because it runs on Anthropic's own servers. To give Claude Code web search capability, we highly recommend adding the DuckDuckGo MCP server (`duckduckgo-mcp-server`) or a similar search MCP to your Claude Code configuration. This allows searches to run locally and seamlessly through the proxy without needing API keys.
 
 ---
 
@@ -252,5 +202,6 @@ ClaudeRelay/
 
 ---
 <p align="center">
-  <i>Built with ❤️ to bridge Anthropic and OpenAI ecosystems.</i>
+  <i>Built with ❤️ to bridge Anthropic and OpenAI ecosystems.</i> <br>
+  <i>                                           -Husain Ghulam</i>
 </p>
