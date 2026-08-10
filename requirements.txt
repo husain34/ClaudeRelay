@@ -1,0 +1,14 @@
+# System Requirements
+# This proxy is pure Node.js — no npm packages are needed (npm install is not required).
+
+# Runtime
+Node.js >= 18.0.0    # Built-in: http, https, url, fs, path — all used here
+
+# Operating System
+# Windows 10/11 (primary target — start-proxy.bat, install-service.ps1)
+# macOS / Linux also work; run:  node proxy.js
+
+# Optional — only needed if you run install-service.ps1 (Windows auto-start)
+# PowerShell >= 5.1  (pre-installed on Windows 10/11)
+
+# No pip packages, no npm packages, no external binaries required.
