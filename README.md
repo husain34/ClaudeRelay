@@ -2,6 +2,8 @@
   
   # 🚀 ClaudeRelay
   
+  <img src="Assets/Asset.png" alt="ClaudeRelay Logo" width="250" />
+  
   **The Ultimate Anthropic → OpenAI Proxy Wrapper**
   
   [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D%2018-339933?logo=node.js&logoColor=white)](https://nodejs.org/)

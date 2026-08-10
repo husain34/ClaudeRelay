@@ -9,10 +9,20 @@
     "test:limits": "node tests/limits-test.js",
     "test:all": "node tests/test-proxy.js && node tests/limits-test.js"
   },
-  "keywords": ["anthropic", "openai", "proxy", "claude", "nvidia", "nim", "llm"],
+  "keywords": [
+    "anthropic",
+    "openai",
+    "proxy",
+    "claude",
+    "nvidia",
+    "nim",
+    "llm"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
   },
-  "dependencies": {}
+  "dependencies": {
+    "duckduckgo-mcp-server": "^0.1.2"
+  }
 }

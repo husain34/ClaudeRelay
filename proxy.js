@@ -29,7 +29,7 @@ const LLM_BASE_URL = process.env.LLM_BASE_URL || 'https://integrate.api.nvidia.c
 const LLM_API_KEY  = process.env.LLM_API_KEY  || process.env.NVIDIA_API_KEY;
 
 if (!LLM_API_KEY) {
-  console.error('ERROR: LLM_API_KEY (or NVIDIA_API_KEY) is not set. Edit proxy/.env');
+  console.error('\x1b[31mERROR: LLM_API_KEY (or NVIDIA_API_KEY) is not set. Edit proxy/.env\x1b[0m');
   process.exit(1);
 }
 
@@ -199,7 +199,7 @@ async function waitForRateLimit() {
   if (rateWindow.length >= RATE_LIMIT_RPM) {
     const oldest = rateWindow[0];
     const waitMs = windowMs - (now - oldest) + 100;
-    console.log(`  [RateLimit] At ${rateWindow.length} RPM — waiting ${Math.ceil(waitMs / 1000)}s before next request...`);
+    console.log(`  \x1b[33m[RateLimit] At ${rateWindow.length} RPM — waiting ${Math.ceil(waitMs / 1000)}s before next request...\x1b[0m`);
     await new Promise(r => setTimeout(r, waitMs));
     const now2 = Date.now();
     rateWindow = rateWindow.filter(t => now2 - t < windowMs);
@@ -229,7 +229,7 @@ function callUpstream(oaBody, stream, clientRes) {
       if (apiRes.statusCode === 429) {
         let e = ''; apiRes.on('data', d => e += d);
         apiRes.on('end', () => {
-          console.warn(`  [429] Rate limited by upstream — you have hit the API rate limit.`);
+          console.warn(`  \x1b[33m[429] Rate limited by upstream — you have hit the API rate limit.\x1b[0m`);
           reject(new Error(`Upstream rate limit (429): too many requests. Wait a minute and retry.`));
         });
         return;
@@ -272,7 +272,7 @@ function callUpstream(oaBody, stream, clientRes) {
         });
 
         apiRes.on('error', err => {
-          console.error('  [Stream] Upstream connection error:', err.message);
+          console.error('  \x1b[31m[Stream] Upstream connection error:\x1b[0m', err.message);
           if (!clientRes.writableEnded) clientRes.end();
           resolve(); // Don't propagate — client may have already disconnected
         });
@@ -290,7 +290,7 @@ function callUpstream(oaBody, stream, clientRes) {
           } catch(e) { reject(e); }
         });
         apiRes.on('error', err => {
-          console.error('  [NonStream] Upstream error:', err.message);
+          console.error('  \x1b[31m[NonStream] Upstream error:\x1b[0m', err.message);
           reject(err);
         });
       }
@@ -298,13 +298,13 @@ function callUpstream(oaBody, stream, clientRes) {
 
     // Socket/connection timeout — NVIDIA took too long or connection stalled
     req.on('timeout', () => {
-      console.warn(`  [Timeout] NVIDIA did not respond within ${REQUEST_TIMEOUT_MS / 1000}s — aborting request.`);
+      console.warn(`  \x1b[33m[Timeout] NVIDIA did not respond within ${REQUEST_TIMEOUT_MS / 1000}s — aborting request.\x1b[0m`);
       req.destroy(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`));
     });
 
     req.on('error', err => {
       if (err.message.includes('timed out') || err.code === 'ECONNRESET' || err.code === 'ECONNABORTED') {
-        console.warn('  [Connection] Request aborted or timed out:', err.message);
+        console.warn('  \x1b[33m[Connection] Request aborted or timed out:\x1b[0m', err.message);
         // Return a retryable Anthropic-style overload error so Claude Code retries gracefully
         if (!clientRes.headersSent && !clientRes.writableEnded) {
           clientRes.writeHead(529, { 'Content-Type': 'application/json' });
@@ -346,13 +346,13 @@ const server = http.createServer(async (req, res) => {
       const body   = JSON.parse(raw);
       const model  = body.model;
       const oaBody = toOpenAI(body);
-      console.log(`→ ${req.method} ${req.url}  model=${model}  stream=${body.stream}`);
+      console.log(`\x1b[36m→ ${req.method} ${req.url}  model=${model}  stream=${body.stream}\x1b[0m`);
 
       await waitForRateLimit();
       await callUpstream(oaBody, !!body.stream, res);
 
     } catch(err) {
-      console.error('Proxy error:', err.message);
+      console.error('\x1b[31mProxy error:\x1b[0m', err.message);
       if (!res.headersSent && !res.writableEnded) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: { type: 'proxy_error', message: err.message } }));
@@ -364,7 +364,7 @@ const server = http.createServer(async (req, res) => {
   req.on('close', () => {
     if (!res.writableEnded) {
       // Client gone — just note it; callNvidia guards writableEnded internally
-      console.log('  [Client] Connection closed by client.');
+      console.log('  \x1b[36m[Client] Connection closed by client.\x1b[0m');
     }
   });
 });
@@ -374,9 +374,92 @@ server.keepAliveTimeout = 10 * 1000;
 server.headersTimeout   = 12 * 1000;
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`\n✓ Anthropic→OpenAI Proxy ready on http://localhost:${PORT}`);
-  console.log(`  Upstream : ${LLM_BASE_URL}`);
-  console.log(`  Model    : ${MODEL}`);
-  console.log(`  Rate limit: ${RATE_LIMIT_RPM} RPM (auto-queued)`);
-  console.log(`  Timeout  : ${REQUEST_TIMEOUT_MS / 1000}s per request\n`);
+  const orange = '\x1b[38;5;208m';  // Claude Terracotta/Orange
+  const bold = '\x1b[1m';
+  const dim = '\x1b[2;37m';
+  const green = '\x1b[32m';
+  const cyan = '\x1b[36m';
+  const yellow = '\x1b[33m';
+  const reset = '\x1b[0m';
+
+  // 1. Column Dimensions
+  const termWidth = process.stdout.columns || 100;
+  const leftWidth = 26;                                         // Left column width
+  const rightWidth = Math.min(termWidth - leftWidth - 10, 58);  // Right column width
+  
+  // Total Outer Width = left (26) + right (58) + borders/padding (7) = 91 chars
+  const totalBoxWidth = leftWidth + rightWidth + 7;
+
+  // 2. Visible Character Length Helper
+  const getVisibleWidth = (str) => {
+    let clean = str.replace(/\x1b\[[0-9;]*m/g, ''); // Strip ANSI colors
+    clean = clean.replace(/\\\\/g, '\\');           // Handle escaped backslashes
+    clean = clean.replace(/[\uFE00-\uFE0F]/g, '');  // Strip zero-width selectors
+    return Array.from(clean).length;                // Accurate character count
+  };
+
+  // 3. Padding Helper
+  const pad = (str, targetWidth, align = 'left') => {
+    const vLen = getVisibleWidth(str);
+    if (vLen >= targetWidth) return str;
+    const diff = targetWidth - vLen;
+    if (align === 'center') {
+      const left = Math.floor(diff / 2);
+      return ' '.repeat(left) + str + ' '.repeat(diff - left);
+    }
+    return str + ' '.repeat(diff);
+  };
+
+  // 4. Left Column Content (Featuring ASCII Bridge Logo)
+  const leftCol = [
+    `${bold}Welcome to ClaudeRelay${reset}`,
+    ``,
+    `${orange}      ▲       ▲      ${reset}`,
+    `${orange}    /═|█|═════|█|═\\    ${reset}`,
+    `${orange}  ══▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀══  ${reset}`,
+    ``,
+    `${green}✓ Proxy Server Active${reset}`,
+    `${dim}http://localhost:${PORT}${reset}`,
+    `${dim}Anthropic → OpenAI Proxy${reset}`
+  ];
+
+  // Truncate long URLs & Models cleanly if terminal is narrow
+  const truncUrl = LLM_BASE_URL.length > rightWidth - 12 
+    ? LLM_BASE_URL.slice(0, rightWidth - 15) + '...' 
+    : LLM_BASE_URL;
+
+  const truncModel = MODEL.length > rightWidth - 12 
+    ? MODEL.slice(0, rightWidth - 15) + '...' 
+    : MODEL;
+
+  // 5. Right Column Content
+  const rightCol = [
+    `${bold}${orange}Upstream Configuration${reset}`,
+    `${dim}Base URL :${reset} ${cyan}${truncUrl}${reset}`,
+    `${dim}Model    :${reset} ${yellow}${truncModel}${reset}`,
+    `─`.repeat(rightWidth),
+    `${bold}${orange}Performance & Limits${reset}`,
+    `${dim}Rate Limit :${reset} ${RATE_LIMIT_RPM} RPM (auto-queued)`,
+    `${dim}Timeout    :${reset} ${REQUEST_TIMEOUT_MS / 1000}s per request`,
+    ``,
+    `${dim}✓ Zero-deps  •  ✓ SSE Stream  •  ✓ Tools${reset}`
+  ];
+
+  // 6. Synchronized Borders
+  const headerTitle = ` ClaudeRelay v1.0.0 `;
+  const topDashes = totalBoxWidth - 4 - getVisibleWidth(headerTitle);
+  const topBorder = `${orange}╭──${bold}${headerTitle}${reset}${orange}${'─'.repeat(Math.max(0, topDashes))}╮${reset}`;
+  const bottomBorder = `${orange}╰${'─'.repeat(totalBoxWidth - 2)}╯${reset}`;
+
+  console.log('\n' + topBorder);
+
+  // 7. Render Rows
+  const maxRows = Math.max(leftCol.length, rightCol.length);
+  for (let i = 0; i < maxRows; i++) {
+    const lText = pad(leftCol[i] || '', leftWidth, 'center');
+    const rText = pad(rightCol[i] || '', rightWidth, 'left');
+    console.log(`${orange}│${reset} ${lText} ${orange}│${reset} ${rText} ${orange}│${reset}`);
+  }
+
+  console.log(bottomBorder + '\n');
 });
