@@ -27,8 +27,6 @@
   - [2. Start the Relay](#2-start-the-relay-)
   - [3. Point Claude Code at the Relay](#3-point-claude-code-at-the-relay-)
 - [Configuration (.env)](#️-configuration-env)
-- [Supported Providers](#-supported-providers)
-- [Testing](#-testing)
 - [How It Works (Deep Dive)](#-how-it-works-deep-dive)
 - [File Reference](#-file-reference)
 
@@ -173,7 +171,34 @@ You can easily switch providers just by editing `.env`. No code changes required
 - ✅ Zero npm dependencies — pure Node.js built-ins only
 - ✅ Works on Windows, Linux, and macOS
 
-🚨 **Note:** When using ClaudeRelay, Anthropic's built-in web search is **not available** because it runs on Anthropic's own servers. To give Claude Code web search capability, we highly recommend adding the DuckDuckGo MCP server (`duckduckgo-mcp-server`) or a similar search MCP to your Claude Code configuration. This allows searches to run locally and seamlessly through the proxy without needing API keys.
+---
+
+## 🔍 Enabling Web Search
+
+When using ClaudeRelay, Anthropic's built-in web search is **not available** because it relies on their internal servers. To give Claude Code robust web search capability (without getting blocked by Google/bot protections), we highly recommend setting up the **Google Search MCP**:
+
+1. **Install the MCP**
+   **Mac / Linux:**
+   ```bash
+   claude mcp add google-search npx -y @fdcicyber/google-search-mcp
+   ```
+   **Windows:**
+   ```bash
+   claude mcp add google-search npx.cmd -y @fdcicyber/google-search-mcp
+   ```
+
+2. **Install the required Chromium version** (prevents stealth browser crashes)
+   ```bash
+   npx puppeteer browsers install chrome@151.0.7922.71
+   ```
+
+3. **Disable the broken native search tools**
+   Always start Claude Code with this flag to force it to use the new MCP:
+   ```bash
+   claude --disallowed-tools WebSearch,WebFetch
+   ```
+
+This allows searches to run locally and seamlessly through a stealth browser without needing any API keys.
 
 ---
 
