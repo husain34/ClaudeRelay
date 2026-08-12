@@ -48,7 +48,6 @@ graph LR
 - 🔄 **Universal Wrapper** : Point it to **any** OpenAI-compatible URL and it just works.
 - 📡 **Full Streaming (SSE) Support** : Watch responses stream in real-time.
 - 🛠️ **Tool / Function Calling** : Fully supports Claude's tool use mapped to OpenAI tools.
-- 🛡️ **Auto Rate-Limit Queue** : Built-in protection against `429 Too Many Requests`.
 - 🔌 **Graceful Disconnects** : Never crashes when the client disconnects mid-stream.
 - 💻 **Cross-Platform** : Native runner scripts for Windows, macOS, and Linux.
 
@@ -132,10 +131,13 @@ You can easily switch providers just by editing `.env`. No code changes required
 | `LLM_BASE_URL` | `https://integrate.api.nvidia.com/v1` | **Any OpenAI-compatible URL** |
 | `LLM_API_KEY` | *(required)* | Your provider's API key |
 | `MODEL` | `nvidia/nemotron-...` | The specific model name to send to the upstream API |
+| `VISION_BASE_URL` | *(optional)* | Fallback API URL for image requests |
+| `VISION_API_KEY` | *(optional)* | Fallback API key for image requests |
+| `VISION_MODEL` | *(optional)* | Fallback model name for image requests |
+| `VISION_CHAINING` | `true` | If true, uses the Vision Model purely to describe the image, and sends the description to the Base Model |
 | `ANTHROPIC_BASE_URL` | `http://localhost:20128` | Where Anthropic clients should connect |
 | `ANTHROPIC_API_KEY` | `proxy` | Fake key for the proxy (any string works) |
 | `PROXY_PORT` | `20128` | Local port for ClaudeRelay |
-| `PROXY_RATE_LIMIT_RPM` | `38` | Max upstream requests per minute |
 | `PROXY_TIMEOUT_SECONDS` | `300` | Upstream request timeout |
 
 > 💡 **Tip:** For local providers like Ollama or LM Studio, set `LLM_API_KEY=local` — any non-empty string works.
@@ -164,7 +166,6 @@ You can easily switch providers just by editing `.env`. No code changes required
 - ✅ Streaming (SSE) and non-streaming responses
 - ✅ Tool / function calling
 - ✅ System prompts, multi-turn conversations
-- ✅ Per-minute rate limiting with automatic queue (no 429 crashes)
 - ✅ Request timeout with graceful 529 response (Claude Code retries automatically)
 - ✅ Client disconnect handled — no server crash, no restart needed
 - ✅ HTTP and HTTPS upstream (auto-detected from `LLM_BASE_URL`)
@@ -201,6 +202,23 @@ When using ClaudeRelay, Anthropic's built-in web search is **not available** bec
 This allows searches to run locally and seamlessly through a stealth browser without needing any API keys.
 
 ---
+
+## 🖼️ Vision Chaining Support
+
+ClaudeRelay automatically detects if an incoming request contains images (e.g., dragging a UI screenshot into Claude Code). By default, it uses a powerful feature called **Vision Chaining**:
+
+1. The relay intercepts the image and sends it to your **Vision Model** (`VISION_MODEL`) to generate a detailed text description.
+2. It replaces the image payload in your request with the generated text description.
+3. The modified request is sent to your **Base Model** (`MODEL`).
+
+This allows your Base Model (which might lack native vision capabilities but excels at reasoning and tool-calling, like Nemotron 120B) to "see" the image through the Vision Model's description!
+
+If you want to disable chaining and send the image directly to your model (if it natively supports vision), set `VISION_MODEL` to exactly the same value as `MODEL` in your `.env`, or set `VISION_CHAINING=false`.
+
+If you don't define `VISION_BASE_URL`, `VISION_API_KEY`, or `VISION_MODEL` in your `.env`, it will safely fall back to using your standard `LLM_BASE_URL` config.
+
+---
+
 
 ## 📁 File Reference
 
