@@ -23,6 +23,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "duckduckgo-mcp-server": "^0.1.2"
+    "@modelcontextprotocol/server-google-search": "^0.1.0",
+    "puppeteer": "^22.0.0"
   }
 }

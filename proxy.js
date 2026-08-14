@@ -290,13 +290,13 @@ function callUpstream(oaBody, stream, clientRes, target) {
         let e = ''; apiRes.on('data', d => e += d);
         apiRes.on('end', () => {
           console.warn(`  \x1b[33m[429] Rate limited by upstream — you have hit the API rate limit.\x1b[0m`);
-          reject(new Error(`Upstream rate limit (429): too many requests. Wait a minute and retry.`));
+          reject(new Error(`Upstream rate limit (429): too many requests. Please retry later.`));
         });
         return;
       }
       if (apiRes.statusCode >= 400) {
         let e = ''; apiRes.on('data', d => e += d);
-        apiRes.on('end', () => reject(new Error(`HTTP ${apiRes.statusCode}: ${e.slice(0, 300)}`)));
+        apiRes.on('end', () => reject(new Error(`Upstream server error: ${apiRes.statusCode}`)));
         return;
       }
 
@@ -367,7 +367,7 @@ function callUpstream(oaBody, stream, clientRes, target) {
         });
         apiRes.on('error', err => {
           console.error('  \x1b[31m[NonStream] Upstream error:\x1b[0m', err.message);
-          reject(err);
+          reject(new Error('Upstream server error'));
         });
       }
     });
@@ -391,7 +391,7 @@ function callUpstream(oaBody, stream, clientRes, target) {
         }
         resolve(); // handled — don't double-reject
       } else {
-        reject(err);
+        reject(new Error('Upstream connection error'));
       }
     });
 
@@ -444,7 +444,13 @@ function getVisionDescription(images, userPrompt, target) {
 
 // ---------- HTTP Server ----------
 const server = http.createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // Restrict CORS to localhost only for security
+  const origin = req.headers.origin;
+  if (origin && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000'); // fallback
+  }
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta');
 
   if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
@@ -456,6 +462,13 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+
+  // Proxy authentication
+  if (req.headers['x-api-key'] !== 'proxy') {
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { type: 'auth_error', message: 'Invalid API key' } }));
+    return;
+  }
 
   let raw = '';
   req.on('data', d => raw += d);
