@@ -22,7 +22,7 @@ if (!process.env.NVIDIA_API_KEY && fs.existsSync(envFile)) {
 const PORT               = parseInt(process.env.PROXY_PORT            || '20128', 10);
 const MODEL              = process.env.MODEL                           || 'nvidia/nemotron-3-super-120b-a12b';
 const MODEL_MAX_TOKENS   = parseInt(process.env.MODEL_MAX_TOKENS      || '32768', 10);
-const REQUEST_TIMEOUT_MS = parseInt(process.env.PROXY_TIMEOUT_SECONDS || '300', 10) * 1000;
+const REQUEST_TIMEOUT_MS = parseInt(process.env.PROXY_TIMEOUT_SECONDS || '900', 10) * 1000;
 
 // Upstream OpenAI-compatible API — defaults to NVIDIA NIM
 const LLM_BASE_URL = process.env.LLM_BASE_URL || 'https://integrate.api.nvidia.com/v1';
@@ -154,11 +154,22 @@ function toAnthropic(oaResp, model) {
 
 // ---------- Streaming conversion: OpenAI SSE → Anthropic SSE ----------
 function makeStreamConverter(res, model) {
-  const state = { started: false, blockIdx: 0, textOpen: false, textIdx: -1, tools: {}, msgId: uid(), finished: false };
+  const state = {
+    started: false,
+    blockIdx: 0,
+    textOpen: false,
+    textIdx: -1,
+    tools: {},
+    msgId: uid(),
+    finished: false,
+    lastActivity: Date.now(),
+    pingInterval: null
+  };
 
   function write(event, data) {
     if (!res.writableEnded) {
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      state.lastActivity = Date.now();
     }
   }
 
@@ -216,6 +227,11 @@ function makeStreamConverter(res, model) {
   function finishStream(reason, tokens = 1) {
     if (state.finished) return;
     state.finished = true;
+    // Clear ping interval
+    if (state.pingInterval) {
+      clearInterval(state.pingInterval);
+      state.pingInterval = null;
+    }
     if (state.textOpen) {
       write('content_block_stop', { type: 'content_block_stop', index: state.textIdx });
       state.textOpen = false;
@@ -231,8 +247,17 @@ function makeStreamConverter(res, model) {
     write('message_stop', { type: 'message_stop' });
   }
 
+  // Set up ping interval to keep connection alive if no data for 15 seconds
+  state.pingInterval = setInterval(() => {
+    const now = Date.now();
+    if (now - state.lastActivity > 15 * 1000) { // 15 seconds
+      write('ping', { type: 'ping' });
+      state.lastActivity = now;
+    }
+  }, 15 * 1000); // check every 15 seconds
+
   convert.finish = finishStream;
-  return convert;
+  return { convert, state };
 }
 
 // ---------- Upstream HTTP call ----------
@@ -286,7 +311,7 @@ function callUpstream(oaBody, stream, clientRes, target) {
         });
 
         console.log(`  \x1b[90m├─\x1b[0m \x1b[32mStreaming started...\x1b[0m`);
-        const convert = makeStreamConverter(clientRes, oaBody.model);
+        const { convert, state } = makeStreamConverter(clientRes, oaBody.model);
         let buf = '';
         let chunkCount = 0;
 
@@ -518,8 +543,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Increase server keep-alive to avoid stale connections
-server.keepAliveTimeout = 10 * 1000;
-server.headersTimeout   = 12 * 1000;
+// Increased from 10s/12s to 5min/6min to accommodate long streaming sessions
+server.keepAliveTimeout = 5 * 60 * 1000;
+server.headersTimeout   = 6 * 60 * 1000;
 
 server.listen(PORT, '127.0.0.1', () => {
   const orange = '\x1b[38;5;208m';  // Claude Terracotta/Orange
