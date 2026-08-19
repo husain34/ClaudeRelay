@@ -19,10 +19,11 @@ if (!process.env.NVIDIA_API_KEY && fs.existsSync(envFile)) {
   }
 }
 
-const PORT               = parseInt(process.env.PROXY_PORT            || '20128', 10);
-const MODEL              = process.env.MODEL                           || 'nvidia/nemotron-3-super-120b-a12b';
-const MODEL_MAX_TOKENS   = parseInt(process.env.MODEL_MAX_TOKENS      || '32768', 10);
-const REQUEST_TIMEOUT_MS = parseInt(process.env.PROXY_TIMEOUT_SECONDS || '900', 10) * 1000;
+const PORT                 = parseInt(process.env.PROXY_PORT             || '20128', 10);
+const MODEL                = process.env.MODEL                            || 'nvidia/nemotron-3-super-120b-a12b';
+const MODEL_MAX_TOKENS     = parseInt(process.env.MODEL_MAX_TOKENS       || '32768', 10);
+const MODEL_CONTEXT_WINDOW = parseInt(process.env.MODEL_CONTEXT_WINDOW   || '131072', 10);
+const REQUEST_TIMEOUT_MS   = parseInt(process.env.PROXY_TIMEOUT_SECONDS  || '900', 10) * 1000;
 
 // Upstream OpenAI-compatible API — defaults to NVIDIA NIM
 const LLM_BASE_URL = process.env.LLM_BASE_URL || 'https://integrate.api.nvidia.com/v1';
@@ -51,6 +52,11 @@ const VIS_HOSTNAME = _visUrl.hostname;
 const VIS_PORT     = _visUrl.port ? parseInt(_visUrl.port, 10) : (_visUrl.protocol === 'https:' ? 443 : 80);
 const VIS_PATH     = _visUrl.pathname;
 const VIS_HTTPS    = _visUrl.protocol === 'https:';
+
+// ---------- Token estimator (1 token ≈ 4 chars) ----------
+function estimateTokens(str) {
+  return Math.ceil((str || '').length / 4);
+}
 
 // ---------- Request conversion: Anthropic → OpenAI ----------
 function toOpenAI(body) {
@@ -120,7 +126,13 @@ function toOpenAI(body) {
       type: 'function',
       function: { name: t.name, description: t.description || '', parameters: t.input_schema || {} },
     }));
-    out.tool_choice = body.tool_choice === 'any' ? 'required' : 'auto';
+    if (body.tool_choice === 'any') {
+      out.tool_choice = 'required';
+    } else if (body.tool_choice?.type === 'tool' && body.tool_choice?.name) {
+      out.tool_choice = { type: 'function', function: { name: body.tool_choice.name } };
+    } else {
+      out.tool_choice = 'auto';
+    }
   }
   return { hasImage, oaBody: out };
 }
@@ -137,10 +149,12 @@ function toAnthropic(oaResp, model) {
   for (const tc of (msg.tool_calls || [])) {
     let input = {};
     try { input = JSON.parse(tc.function.arguments || '{}'); } catch {}
-    let name = tc.function.name;
-    if (['bash', 'read', 'write', 'edit', 'grep', 'glob', 'replace', 'str_replace'].includes(name)) {
-      name = name.charAt(0).toUpperCase() + name.slice(1);
-    }
+    const rawName = String(tc.function?.name ?? '');
+    const lowerName = rawName.toLowerCase();
+    const knownTools = ['bash', 'read', 'write', 'edit', 'grep', 'glob', 'replace', 'str_replace'];
+    const name = knownTools.includes(lowerName)
+      ? lowerName.charAt(0).toUpperCase() + lowerName.slice(1)
+      : rawName;
     content.push({ type: 'tool_use', id: tc.id, name, input });
   }
   return {
@@ -207,11 +221,12 @@ function makeStreamConverter(res, model) {
           content_block: { type: 'tool_use', id: state.tools[i].id, name: state.tools[i].name, input: {} } });
       }
       if (tc.function?.name && !state.tools[i].name) {
-        let name = tc.function.name;
-        if (['bash', 'read', 'write', 'edit', 'grep', 'glob', 'replace', 'str_replace'].includes(name)) {
-          name = name.charAt(0).toUpperCase() + name.slice(1);
-        }
-        state.tools[i].name = name;
+        const rawName = String(tc.function?.name ?? '');
+        const lowerName = rawName.toLowerCase();
+        const knownTools = ['bash', 'read', 'write', 'edit', 'grep', 'glob', 'replace', 'str_replace'];
+        state.tools[i].name = knownTools.includes(lowerName)
+          ? lowerName.charAt(0).toUpperCase() + lowerName.slice(1)
+          : rawName;
       }
       if (tc.function?.arguments) {
         write('content_block_delta', { type: 'content_block_delta', index: state.tools[i].blockIdx,
@@ -296,7 +311,17 @@ function callUpstream(oaBody, stream, clientRes, target) {
       }
       if (apiRes.statusCode >= 400) {
         let e = ''; apiRes.on('data', d => e += d);
-        apiRes.on('end', () => reject(new Error(`Upstream server error: ${apiRes.statusCode}`)));
+        apiRes.on('end', () => {
+          console.warn(`  \x1b[33m[${apiRes.statusCode}] Upstream error — forwarding to client.\x1b[0m`);
+          if (!clientRes.headersSent && !clientRes.writableEnded) {
+            // Try to forward as-is; if body isn't JSON-parseable just wrap it
+            let errBody;
+            try { errBody = JSON.parse(e); } catch { errBody = { type: 'error', error: { type: 'upstream_error', message: e || `Upstream returned ${apiRes.statusCode}` } }; }
+            clientRes.writeHead(apiRes.statusCode, { 'Content-Type': 'application/json' });
+            clientRes.end(JSON.stringify(errBody));
+          }
+          resolve(); // handled — don't double-reject
+        });
         return;
       }
 
@@ -529,6 +554,26 @@ const server = http.createServer(async (req, res) => {
       // If client disconnected before request started, skip upstream request
       if (res.destroyed) {
         console.log('  \x1b[33m[Abort] Client disconnected before request started. Skipping upstream.\x1b[0m');
+        return;
+      }
+
+      // Context window guard — reject before wasting an upstream API call
+      const totalTokenEstimate = oaBody.messages.reduce((acc, m) => {
+        const c = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+        return acc + estimateTokens(c);
+      }, 0) + (oaBody.max_tokens || 0);
+
+      if (totalTokenEstimate > MODEL_CONTEXT_WINDOW) {
+        console.warn(`  \x1b[33m[Context] Estimated ${totalTokenEstimate} tokens exceeds MODEL_CONTEXT_WINDOW of ${MODEL_CONTEXT_WINDOW}. Rejecting.\x1b[0m`);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          type: 'error',
+          error: {
+            type: 'invalid_request_error',
+            message: `Context window limit reached (~${totalTokenEstimate} tokens > ${MODEL_CONTEXT_WINDOW} limit). ` +
+                     `Type /compact in Claude Code to summarize your conversation, then retry.`
+          }
+        }));
         return;
       }
 
